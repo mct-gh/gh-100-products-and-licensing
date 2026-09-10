@@ -2,19 +2,20 @@ name: Step 2
 
 on:
   workflow_dispatch:
-  # Common event triggers: pull_request, push, issues, issue_comment (feel free to experiment)
-  # Docs: https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows
-  # Example:
-  # pull_request:
-  #   branches:
-  #     - main
-  #   types:
-  #     - closed
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/usage-estimate.md'
 
 permissions:
-  contents: write
+  contents: read
   actions: write
   issues: write
+
+concurrency:
+  group: "gh100-products-2"
+  cancel-in-progress: true
 
 env:
   STEP_3_FILE: ".github/steps/3-step.md"
@@ -22,27 +23,26 @@ env:
 jobs:
   find_exercise:
     name: Find Exercise Issue
-    uses: skills/exercise-toolkit/.github/workflows/find-exercise-issue.yml@v0.9.1
+    uses: skills/exercise-toolkit/.github/workflows/find-exercise-issue.yml@v0.9.3
 
-  # This job is optional. We often call it a "grading job". If the step is not graded, remove it.
   check_step_work:
     name: Check step work
-    runs-on: ubuntu-latest
     needs: [find_exercise]
+    runs-on: ubuntu-latest
     env:
       ISSUE_REPOSITORY: ${{ github.repository }}
       ISSUE_NUMBER: ${{ needs.find_exercise.outputs.issue-number }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get response templates
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: skills/exercise-toolkit
           path: exercise-toolkit
-          ref: v0.9.1
+          ref: v0.9.3
 
       - name: Find last comment
         id: find-last-comment
@@ -50,6 +50,7 @@ jobs:
         with:
           repository: ${{ env.ISSUE_REPOSITORY }}
           issue-number: ${{ env.ISSUE_NUMBER }}
+          comment-author: github-actions[bot]
           direction: last
 
       - name: Update comment - checking work
@@ -61,25 +62,70 @@ jobs:
           file: exercise-toolkit/markdown-templates/step-feedback/checking-work.md
           edit-mode: replace
 
-      # START: Check practical exercise
-
-      # replace-me: Example of a grading check. You can add more checks as needed.
-      - name: Check if README file exists
-        id: check-file-exists
+      # vulnerability-alerts 엔드포인트는 admin 권한이 필요해 GITHUB_TOKEN 으로 못 부른다.
+      # 그리고 새 public 리포는 경고가 기본으로 켜져 있어 채점 변별력이 없다 (2026-09-09 실측).
+      # 대신 학습자가 직접 켜야 하는 Dependabot security updates 를 리포 객체의 security_and_analysis 로 본다.
+      # GITHUB_TOKEN 이 이 필드를 볼 수 있는지는 첫 실제 검증에서 확인한다. 안 보이면 null 이 찍힌다.
+      - name: "Check file exists - usage estimate"
+        id: check-file
         continue-on-error: true
-        uses: skills/exercise-toolkit/actions/file-exists@v0.9.1
+        uses: skills/exercise-toolkit/actions/file-exists@v0.9.3
         with:
-          file: README.md
+          file: 'docs/usage-estimate.md'
 
-      # replace-me: Example of a grading check. You can add more checks as needed.
-      - name: Check for keyphrase in README.md
-        id: check-for-keyphrase
+      - name: "Check keyphrase - billable time"
+        id: check-billable
         continue-on-error: true
-        uses: skills/action-keyphrase-checker@v1
+        uses: skills/action-keyphrase-checker@v2
         with:
-          text-file: README.md
-          keyphrase: Installation guide
+          text-file: docs/usage-estimate.md
+          keyphrase: "billable"
+          case-sensitive: false
 
+      - name: "Check keyphrase - monthly estimate"
+        id: check-estimate
+        continue-on-error: true
+        uses: skills/action-keyphrase-checker@v2
+        with:
+          text-file: docs/usage-estimate.md
+          keyphrase: "월 예상 분:"
+          case-sensitive: false
+
+      - name: "Check keyphrase - self-hosted comparison"
+        id: check-selfhosted
+        continue-on-error: true
+        uses: skills/action-keyphrase-checker@v2
+        with:
+          text-file: docs/usage-estimate.md
+          keyphrase: "self-hosted"
+          case-sensitive: false
+
+      # Usage probe 를 실제로 돌렸는지 본다. 문서만 쓰고 넘어가는 것을 막는 장치다.
+      # billable 수치 자체는 timing 엔드포인트로 찍어 보되, 못 읽어도 실패시키지 않는다.
+      # GITHUB_TOKEN 이 timing 을 읽는지는 첫 실제 검증에서 확인한다.
+      - name: "Check workflow run - Usage probe 실행 완료"
+        id: check-run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" --jq 'first(.workflow_runs[] | select(.name == "Usage probe") | .status) // "none"')
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" --jq 'first(.workflow_runs[] | select(.name == "Usage probe") | .id) // empty')
+          echo "Usage probe status=$status id=$run_id"
+          if [ "$status" = "none" ]; then
+            echo "::error::Usage probe 워크플로 실행 기록이 없습니다. Actions 탭에서 Run workflow 를 눌러 한 번 실행하세요."
+            exit 1
+          fi
+          if [ "$status" != "completed" ]; then
+            echo "::error::Usage probe 실행이 아직 완료되지 않았습니다 (상태: $status). 끝난 뒤 다시 채점하세요."
+            exit 1
+          fi
+          billable=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/timing" --jq '.billable // empty' 2>/dev/null || true)
+          if [ -n "$billable" ]; then
+            echo "billable(API): $billable"
+          else
+            echo "timing 엔드포인트를 읽지 못했습니다. 실행 화면의 Usage 값을 쓰세요."
+          fi
       - name: Update comment - step results
         uses: GrantBirki/comment@v2.1.1
         with:
@@ -91,14 +137,16 @@ jobs:
           vars: |
             step_number: 2
             results_table:
-              - description: "Checked if README.md file exists"
-                passed: ${{ steps.check-file-exists.outcome == 'success' }}
-              - description: "Checked for Installation guide in README.md"
-                passed: ${{ steps.check-for-keyphrase.outcome == 'success' }}
-
-      # Add more checks as needed
-
-      # END: Check practical exercise
+              - description: "docs/usage-estimate.md 를 만들었다"
+                passed: ${{ steps.check-file.outcome == 'success' }}
+              - description: "실행 화면의 billable 시간을 옮겨 적었다"
+                passed: ${{ steps.check-billable.outcome == 'success' }}
+              - description: "월 예상 분을 계산했다"
+                passed: ${{ steps.check-estimate.outcome == 'success' }}
+              - description: "self-hosted 러너와 비교했다"
+                passed: ${{ steps.check-selfhosted.outcome == 'success' }}
+              - description: "Usage probe 를 실제로 실행해 완료했다"
+                passed: ${{ steps.check-run.outcome == 'success' }}
 
       - name: Fail job if not all checks passed
         if: contains(steps.*.outcome, 'failure')
@@ -106,7 +154,7 @@ jobs:
 
   post_next_step_content:
     name: Post next step content
-    needs: [find_exercise] # if check_step_work then "needs: [find_exercise, check_step_work]"
+    needs: [find_exercise, check_step_work]
     runs-on: ubuntu-latest
     env:
       ISSUE_REPOSITORY: ${{ github.repository }}
@@ -114,14 +162,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get response templates
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: skills/exercise-toolkit
           path: exercise-toolkit
-          ref: v0.9.1
+          ref: v0.9.3
 
       - name: Create comment - step finished
         uses: GrantBirki/comment@v2.1.1
@@ -148,7 +196,7 @@ jobs:
 
       - name: Disable current workflow and enable next one
         run: |
-          gh workflow disable "${{github.workflow}}"
+          gh workflow disable "${{ github.workflow }}"
           gh workflow enable "Step 3"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
