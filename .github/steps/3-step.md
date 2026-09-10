@@ -1,35 +1,27 @@
-## Step 3: (replace-me: STEP-NAME)
+## 3단계: 사용량을 읽는 법을 정리한다
 
-(replace-me: OPTIONAL Brief story or scenario to introduce the step)
+관리자 업무의 절반은 "지금 얼마나 쓰고 있는가" 를 답하는 일입니다.
+GitHub 은 이것을 두 갈래로 보여줍니다.
 
-### 📖 Theory: (replace-me: Theory title)
+- **License Usage Stats**: 좌석을 몇 개 샀고 몇 개가 실제로 쓰이는지. 사람 단위입니다
+- **Metered Usage Report**: Actions 분, Packages 저장용량, Copilot 같이 쓴 만큼 과금되는 것들입니다
 
-<!-- GitHub-styled notifications can be used outside of ordered lists. Available options are: NOTE, IMPORTANT, WARNING, TIP, CAUTION -->
-<!--
-> [!NOTE]
-> (Important note or additional information relevant to this section)
- -->
+여기서 관리자가 실제로 하는 결정이 나옵니다.
+90일 동안 로그인하지 않은 좌석을 회수할지, 셀프호스트 러너로 Actions 분을 줄일지 같은 것입니다.
 
-(replace-me: Optional theory or background information relevant to this step)
+### 할 일
 
-### ⌨️ Activity: (replace-me: Activity title)
+`docs/license-usage.md` 파일을 만들고 아래를 담으세요.
 
-1. (replace-me: First instruction)
-
-   (replace-me: Make sure to properly indent any multiline instructions)
-
-1. (replace-me: Second instruction)
-
-   (replace-me: Optionally reference images from the `.github/images/` directory to support any part of the content)
-
-   <img width="200" alt="descriptive alt text" src="../images/jetpacktocat.png" />
-
-1. (replace-me: Additional instructions as needed)
+1. `License Usage Stats` 로 무엇을 알 수 있는지 한 줄
+2. `Metered usage` 리포트로 무엇을 알 수 있는지 한 줄, 그리고 metered 항목을 두 개 이상 나열
+3. 미사용 좌석을 다루는 절차를 `회수` 라는 말을 넣어 두 줄 이상
 
 <details>
-<summary>Having trouble? 🤷</summary><br/>
+<summary>어디서 보는 화면인가요</summary><br/>
 
-- (replace-me: Troubleshooting tip or hint)
-- (replace-me: Additional troubleshooting tips as needed)
+엔터프라이즈 계정의 **Settings → Billing and licensing** 아래에 있습니다.
+개인 계정에는 이 화면이 없으므로, 이 단계는 문서로만 정리합니다.
+강사가 실제 엔터프라이즈 화면을 띄워 보여줍니다.
 
 </details>
